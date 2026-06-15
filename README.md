@@ -1,244 +1,157 @@
-# Studium — Decentralized Learning on Shelby
+# Scout
 
-> The first decentralized course platform built on [Shelby Protocol](https://shelby.xyz) and the [Aptos](https://aptoslabs.com) blockchain. Teachers upload courses, students pay in ShelbyUSD, and every enrollment is verified on-chain — forever.
+**Offline field coordination, powered by on-device AI.**
 
-**Live Demo:** [studium.vercel.app](https://studium.vercel.app) &nbsp;|&nbsp; **Network:** Shelby Testnet · Aptos
+When teams operate in places where the internet is unreliable or absent, the people on the ground still need to make fast, shared decisions. Scout turns scattered, often-conflicting field reports into one clear recommendation per location — running the AI directly on local hardware, with no cloud and no connection to the outside world.
 
----
+A capable device nearby (a laptop, a workstation) acts as a **base station**. Weaker devices in the field delegate the AI work to it over a direct, encrypted peer-to-peer link. If the base is unreachable, each device falls back to running the model locally. The result keeps working as conditions degrade — full connectivity, local-network-only, or fully offline.
 
-## What is Studium?
-
-Studium is a decentralized alternative to Coursera and Udemy. Instead of a centralized platform that takes a cut of every sale, controls your content, and can shut you down at any time — Studium puts teachers and students in direct contact, with Shelby Protocol as the infrastructure.
-
-- **Teachers** upload course files (video, PDF, audio, slides) directly to Shelby decentralized storage
-- **Students** pay course prices in ShelbyUSD directly to the teacher — no middleman, no platform fee
-- **Every enrollment** is recorded as an on-chain transaction on Aptos — a permanent, verifiable proof of education
-- **Content lives forever** — stored on Shelby, not on a server that can be shut down
+Built for the [QVAC Unleash Edge AI Hackathon](https://qvac.tether.io). All inference runs through the QVAC SDK.
 
 ---
 
-## Features
+## What it does
 
-### For Students
-- Browse courses by category (Web3, Programming, Design, Business, AI, Music)
-- Search and filter the course catalog
-- Connect Petra wallet and enroll with one click
-- Pay in ShelbyUSD — payments go directly to the teacher
-- On-chain enrollment certificate recorded on Aptos
-- Access all course lessons after enrollment
-
-### For Teachers
-- Upload a course in 3 steps — Course Info → Lessons → Pricing
-- Attach any file type per lesson: video, PDF, audio, or slides
-- Set free or paid pricing in ShelbyUSD
-- Course files stored on Shelby decentralized storage
-- 100% of earnings go directly to your wallet
-
-### Platform
-- Real Petra wallet integration via `@aptos-labs/wallet-adapter-react`
-- On-chain transaction signing for enrollments
-- Shelby SDK integrated for decentralized file storage
-- Geomi API key for Shelbynet access
-- Fully responsive design
+- **Fuses field reports into one call.** Multiple people log what they see at a location, in plain words. Scout reconciles them — including contradictions — into a single actionable recommendation.
+- **Runs AI on-device.** Inference uses Qwen3-1.7B through the QVAC SDK on CPU. No cloud, no API calls, no data leaving the hardware.
+- **Delegates compute peer-to-peer.** A field device can borrow a stronger base station's compute over a direct encrypted P2P connection (Holepunch DHT), so low-power hardware gets fast AI it couldn't run alone.
+- **Degrades gracefully.** Base reachable → delegate. Base gone → run locally. No internet at all → still runs locally on-device.
 
 ---
 
-## Tech Stack
+## Why it matters (the edge-AI case)
 
-| Layer | Technology |
+| Property | How Scout delivers it |
 |---|---|
-| Frontend | React 18 + TypeScript + Vite |
-| Blockchain | Aptos (Shelbynet) |
-| Storage | Shelby Protocol SDK |
-| Wallet | Petra Wallet via Aptos Wallet Adapter |
-| API Keys | Geomi (geomi.dev) |
-| Deployment | Vercel |
+| **Privacy** | Reports and inference never leave local hardware. No cloud, no third party. |
+| **Resilience** | Works across full connectivity, local-network-only, and fully offline. A dead base station degrades to local inference rather than failure. |
+| **Cost** | Weak devices borrow one capable machine's compute instead of every device needing a datacenter or a paid API. |
+| **Speed** | On-device fusion returns in ~5 seconds on CPU; no network round-trip to a remote provider. |
 
 ---
 
-## Getting Started
+## Architecture
 
-### Prerequisites
+Scout uses a **star topology**: one base station, many field devices.  
 
-- Node.js v18+
-- [Petra Wallet](https://petra.app) browser extension
-- A Geomi API key from [geomi.dev](https://geomi.dev) (select **Shelbynet** network)
-- ShelbyUSD tokens from the [Shelby Discord](https://discord.gg/shelbyserves)
+field device ──┐
+                   │  (P2P, encrypted, DHT discovery)
+    field device ──┼──▶  BASE STATION  (runs the model)
+                   │
+    field device ──┘
 
-### Installation
+- **Base station** (`provider.js`) — runs the QVAC provider, holds the model, serves delegated inference. Prints a public key on startup.
+- **Field device** (`server.js` + `index.html`) — a small Node server that serves the web UI and runs fusion, either delegated to a base (when a provider key is supplied) or locally.
+- **Data layer** (`db.js`) — local SQLite store for reports and recommendations.
+- **Fusion** (`fusion.js`) — the prompt and logic that turn raw reports into one recommendation.
+
+### Multiple independent teams
+
+Separation is by **public key**. Each team runs its own base station, which has a unique key. A team's field devices point only at their own base's key, so multiple teams can operate on the same physical network without seeing each other's data — each base keeps its own store.
+
+---
+
+## Requirements
+
+- **Node.js ≥ 22.17** (developed on v25)
+- macOS, Linux, or Windows (desktop)
+- A first-run internet connection to download npm packages and the model weights (~once; cached locally thereafter at `~/.qvac/models/`)
+
+---
+
+## Setup
 
 ```bash
-# Clone the repo
-git clone https://github.com/kakah4/studium.git
-cd studium
-
-# Install dependencies
-npm install --legacy-peer-deps
-
-# Set up environment variables
-cp .env.example .env
+git clone <your-repo-url>
+cd scout
+npm install
 ```
 
-Edit `.env` and add your Geomi API key:
-
-```env
-VITE_APTOS_API_KEY=your_geomi_api_key_here
-VITE_SHELBY_NETWORK=testnet
-```
+Seed some sample reports (optional, for a quick first look):
 
 ```bash
-# Start development server
-npm run dev
+node seed.js
 ```
 
-Open [http://localhost:5173](http://localhost:5173) in your browser.
+---
 
-### Build for Production
+## Running it
+
+Scout runs in two roles. For a single-machine demo, use two terminals.
+
+### Local-only (one device, no base)
 
 ```bash
-npm run build
+node server.js
 ```
+
+Open **http://localhost:3000**. The banner shows *Base offline — running on this device*. All inference runs locally.
+
+### Delegated (field device + base station)
+
+**Terminal 1 — start the base station:**
+
+```bash
+node provider.js
+```
+
+It loads the model and prints a public key. Copy it.
+
+**Terminal 2 — start the field device, pointed at that base:**
+
+```bash
+PROVIDER_KEY=<paste-the-key-here> node server.js
+```
+
+Open **http://localhost:3000**. The banner shows *Base station online — inference delegated*. Reports now fuse on the base station's compute over P2P.
+
+### Seeing the fallback
+
+With both running and the banner green, stop the base station (`Ctrl+C` in Terminal 1). Within a few seconds the banner turns amber on its own. Request a recommendation again — it still works, now tagged *Local*. This is the resilience path: the field device never stops working when the base disappears.
 
 ---
 
-## Project Structure
+## Resilience: failure modes and what survives
 
-```
-studium/
-├── src/
-│   ├── App.tsx              # Main application — full UI and logic
-│   ├── WalletProvider.tsx   # Aptos wallet adapter setup
-│   ├── shelby.ts            # Shelby SDK integration
-│   ├── config.ts            # Network and API configuration
-│   ├── main.tsx             # App entry point
-│   └── index.css            # Global styles
-├── .env.example             # Environment variables template
-├── .npmrc                   # Legacy peer deps flag for Vercel
-├── vite.config.ts           # Vite + Node polyfills config
-└── README.md
-```
-
----
-
-## How It Works
-
-### Enrollment Flow
-
-```
-Student connects Petra wallet
-        ↓
-Student clicks "Enroll Now"
-        ↓
-Petra popup — sign transaction
-        ↓
-Transaction recorded on Aptos (Shelbynet)
-        ↓
-Enrollment proof stored on-chain
-        ↓
-All course lessons unlocked
-```
-
-### Course Upload Flow
-
-```
-Teacher connects Petra wallet
-        ↓
-Fills in course info + lessons + price
-        ↓
-Files uploaded to Shelby decentralized storage
-        ↓
-Blob registered on Aptos via ShelbyBlobClient
-        ↓
-Petra popup — sign registration transaction
-        ↓
-Course appears in catalog
-```
-
----
-
-## Shelby SDK Integration
-
-Studium uses the official `@shelby-protocol/sdk` for decentralized file storage:
-
-```typescript
-import {
-  ShelbyClient,
-  ShelbyBlobClient,
-  generateCommitments,
-  createDefaultErasureCodingProvider,
-  expectedTotalChunksets
-} from "@shelby-protocol/sdk/browser";
-```
-
-The SDK handles:
-- **Erasure coding** — files are encoded for fault-tolerant storage
-- **Blob registration** — on-chain commitment via `ShelbyBlobClient.createRegisterBlobPayload()`
-- **RPC upload** — file data uploaded to the Shelby storage network
-- **Download URLs** — permanent URLs for accessing stored files
-
----
-
-## Environment Variables
-
-| Variable | Description |
+| Situation | What happens |
 |---|---|
-| `VITE_APTOS_API_KEY` | Your Geomi API key (Shelbynet network) |
-| `VITE_SHELBY_NETWORK` | Network — `testnet` |
+| Base station online | Field device delegates inference to it over encrypted P2P. |
+| Base station dies / out of range | Field device detects it (heartbeat fails) and runs the model locally. No interruption. |
+| No internet, local network up | Devices discover each other over the local network; delegation still possible. Internet is not required. |
+| No network at all | Each device runs fully offline on its own cached model. |
+| Model already downloaded | No re-download needed; works with no connection. |
 
-Get your API key at [geomi.dev](https://geomi.dev) — create a new API resource, select **Shelbynet**, enable **Client usage**.
-
----
-
-## Roadmap
-
-- [x] Course catalog with search and filtering
-- [x] Petra wallet integration
-- [x] On-chain enrollment transactions
-- [x] Teacher course upload form
-- [x] Shelby SDK integration
-- [x] Vercel deployment
-- [ ] Real Shelby RPC file upload (in progress)
-- [ ] ShelbyUSD payment processing
-- [ ] On-chain certificate NFTs
-- [ ] Student dashboard with enrolled courses
-- [ ] Teacher earnings dashboard
-- [ ] Course reviews and ratings
+The system has no single point whose loss stops a field worker from getting a recommendation.
 
 ---
 
-## Built With Shelby
+## Tech stack
 
-Studium is a showcase of what's possible when you combine:
-
-- **Shelby Protocol** for permanent, decentralized file storage
-- **Aptos blockchain** for fast, cheap on-chain transactions
-- **ShelbyUSD** for direct peer-to-peer payments between teachers and students
-
-No AWS. No centralized database. No platform that can shut you down.
+- **[QVAC SDK](https://qvac.tether.io)** (`@qvac/sdk`) — all on-device inference and P2P
+- **Qwen3-1.7B** (Q4, GGUF) — the language model, run on CPU
+- **Holepunch DHT** (via QVAC) — peer discovery and direct encrypted connections
+- **better-sqlite3** — local report storage
+- **Node.js** + vanilla HTML/CSS/JS — server and UI
 
 ---
 
-## Contributing
+## Known limits (and what's next)
 
-Pull requests are welcome. For major changes, please open an issue first.
+Scout deliberately ships a focused, working core. Honest boundaries of the current build:
+
+- **Star, not mesh.** Field devices coordinate through a base, not directly with each other. A device that can't reach the base falls back to local — it doesn't route through a neighbor.
+- **Delegation needs a shared network.** The base and field devices must share a local network (Wi-Fi/LAN) to discover each other. Fully air-gapped radio links (Bluetooth/Wi-Fi Direct) are not used; "offline" means no internet/cloud, not no network.
+- **Text reports only.** No file or image input yet.
+
+### Roadmap
+
+- **Peer-to-peer mesh.** Devices relay through each other and gossip reports, removing the base as a single point and surviving any node's loss.
+- **Document ingestion (PDF).** Pull recommendations that account for official advisories, permits, or briefings.
+- **Mobile (Expo) build.** Run natively on phones, not just desktop.
+- **Vision input.** Let the model reason over photos from the field.
 
 ---
 
 ## License
 
-MIT
-
----
-
-## Links
-
-- **Live Demo:** [studium.vercel.app](https://studium.vercel.app)
-- **Shelby Protocol:** [shelby.xyz](https://shelby.xyz)
-- **Shelby Docs:** [docs.shelby.xyz](https://docs.shelby.xyz)
-- **Geomi API:** [geomi.dev](https://geomi.dev)
-- **Aptos:** [aptoslabs.com](https://aptoslabs.com)
-- **Discord:** [discord.gg/shelbyserves](https://discord.gg/shelbyserves)
-
----
-
-*Built by [kakah4](https://github.com/kakah4) on Shelby Testnet · Aptos*
+MIT © Christian. See [LICENSE](LICENSE).

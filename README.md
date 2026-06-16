@@ -2,6 +2,8 @@
 
 **Offline field coordination, powered by on-device AI.**
 
+> **Setting it up?** See **[SETUP.md](SETUP.md)** for step-by-step install and run instructions — for both the base station and field device, on macOS, Windows, and Linux.
+
 When teams operate in places where the internet is unreliable or absent, the people on the ground still need to make fast, shared decisions. Scout turns scattered, often-conflicting field reports into one clear recommendation per location — running the AI directly on local hardware, with no cloud and no connection to the outside world.
 
 A capable device nearby (a laptop, a workstation) acts as a **base station**. Weaker devices in the field delegate the AI work to it over a direct, encrypted peer-to-peer link. If the base is unreachable, each device falls back to running the model locally. The result keeps working as conditions degrade — full connectivity, local-network-only, or fully offline.
